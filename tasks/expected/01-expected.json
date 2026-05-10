@@ -1,0 +1,10 @@
+{
+  "vendors": [
+    {"name": "Anthropic", "region": "us-west", "priority": 1},
+    {"name": "Alibaba DashScope", "region": "cn-hangzhou", "priority": 2},
+    {"name": "Zhipu BigModel", "region": "cn-beijing", "priority": 2},
+    {"name": "Moonshot", "region": "cn-beijing", "priority": 3},
+    {"name": "Stepfun", "region": "cn-shanghai", "priority": 4}
+  ],
+  "count": 5
+}

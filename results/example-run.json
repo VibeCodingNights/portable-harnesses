@@ -1,0 +1,20 @@
+{
+  "task": 1,
+  "model": "qwen",
+  "adapter": "passthrough",
+  "elapsed_s": 4.81,
+  "completed": false,
+  "tool_calls": 1,
+  "errors": 0,
+  "loops": 0,
+  "early_termination": true,
+  "notes": "output/vendors.json missing",
+  "agent_error": null,
+  "transcript_summary": [
+    {
+      "role": "assistant",
+      "content_preview": "I'll read the input file and extract the vendor list.\n<tool_call>\n{\"name\": \"fs_read\", \"arguments\": {\"path\":",
+      "tool_calls": []
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+sandbox/
+node_modules/
+dist/
+results/*.json
+!results/example-run.json
+.DS_Store

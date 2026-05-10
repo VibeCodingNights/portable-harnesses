@@ -1,0 +1,13 @@
+{
+  "files_required": [
+    {"path": "output/models.csv", "lines": 5, "header": "model,lab,strength"},
+    {"path": "output/count.txt", "content": "4"}
+  ],
+  "tool_calls_required": [
+    "web_search",
+    "fs_write",
+    "codegen_run",
+    "fs_read"
+  ],
+  "final_message_must_mention": "4"
+}
