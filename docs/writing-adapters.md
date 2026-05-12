@@ -115,7 +115,7 @@ Match RL'd sampling at the class level:
 
 ```python
 class KimiAdapter(Adapter):
-    sampling = {"temperature": 0.6, "top_p": 1.0}
+    sampling = {"temperature": 0.6, "top_p": 0.95}  # k2.6 instant-mode defaults
 ```
 
 Inject continuation cues into the system prompt in `reshape_messages`:

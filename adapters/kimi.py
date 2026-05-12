@@ -24,8 +24,11 @@ Things to try in this stub:
     1. Uncomment `completion_overrides = {"tool_choice": "auto"}` — the
        minimal viable fix for the 400.
 
-    2. `sampling`: Moonshot's published defaults are temperature 0.6, top_p 1.0.
-       Kimi was RL'd at these — drift breaks calibration. Already set below.
+    2. `sampling`: Moonshot's published instant-mode defaults are temperature
+       0.6, top_p 0.95. K2.6's thinking mode (default) requires temperature 1.0,
+       top_p 0.95 fixed — any other value 400s on platform.kimi.ai. We use
+       instant-mode values + `tool_choice="auto"` (below) to sidestep that.
+       Already set below.
 
     3. `reshape_messages`: inject a continuation reminder into the system
        prompt, or append a brief user-shaped nudge after each tool result.
@@ -43,7 +46,7 @@ from typing import Any
 from adapters.base import Adapter
 
 
-_KIMI_SAMPLING = {"temperature": 0.6, "top_p": 1.0}
+_KIMI_SAMPLING = {"temperature": 0.6, "top_p": 0.95}
 
 _CONTINUATION_REMINDER = (
     "Important: review the original task. If any step remains unfinished, "

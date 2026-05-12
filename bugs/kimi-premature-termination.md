@@ -40,7 +40,7 @@ python run.py --task 2 --model kimi --adapter passthrough --verbose
 
 Behavioral coupling. Three knobs likely matter:
 
-1. **Sampling.** Kimi K2.6 was RL'd at temperature 0.6, top_p 1.0. The default 0.7/1.0 is close but the RL'd termination behavior is calibrated to those exact numbers.
+1. **Sampling.** Moonshot publishes two K2.6 sampling modes: instant (temperature 0.6, top_p 0.95) and thinking (temperature 1.0, top_p 0.95, fixed — any other value 400s on platform.kimi.ai). The generic harness default (0.7 / 1.0) matches neither. Pick a mode and pin to its exact numbers.
 2. **System prompt shape.** Moonshot's native loop ends each turn with a continuation cue that resets the termination predictor. Without it, Kimi's prior is "task complete after one step".
 3. **Tool-result envelope.** Kimi's training framed tool results as intermediate steps. OpenAI-shaped `role: tool` messages don't carry the same "more to come" signal.
 
@@ -51,7 +51,7 @@ There's also a harness-level prerequisite: smolagents sets `tool_choice="require
 In `adapters/kimi.py`:
 
 ```python
-sampling = {"temperature": 0.6, "top_p": 1.0}
+sampling = {"temperature": 0.6, "top_p": 0.95}  # k2.6 instant-mode defaults
 completion_overrides = {"tool_choice": "auto"}
 
 _REMINDER = "Review the original task after each tool result. Only call `final_answer` when every step is finished."

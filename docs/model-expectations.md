@@ -58,7 +58,7 @@ What each of the four models was post-trained against. Read the row for the mode
 | Tool schema | OpenAI-style accepted on Moonshot's API. |
 | Tool result role | `tool` accepted at API; semantically the model expects the result to feel like an *intermediate step*, not a turn closure. |
 | Tool call emission | Structured `tool_calls`. Wire is well-behaved. |
-| Sampling | **Temperature 0.6, top_p 1.0** (Moonshot docs, kimi-k2-6 quickstart). The model was RL'd at these settings — the termination predictor is calibrated to them. |
+| Sampling | Two published modes (platform.kimi.ai quickstart). **Instant mode: temperature 0.6, top_p 0.95.** **Thinking mode (default): temperature 1.0, top_p 0.95 — fixed; any other value returns a 400.** Pick a mode; don't mix. |
 | End-of-turn | The dangerous one: `end_turn` fires *early* when the context shape doesn't match Moonshot's native agentic-loop scaffolding. See bugs/kimi-premature-termination.md. |
 | Quirks | System prompt scaffolding matters. Continuation cues after each tool result drastically reduce premature termination. The OpenAI-shape default tool envelope reads as a closing turn to Kimi. |
 
