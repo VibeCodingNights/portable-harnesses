@@ -41,24 +41,29 @@ Format-level coupling. The Qwen-Agent chat template uses `<tool_call>` text-tag 
 
 ## Fix sketch
 
-In `adapters/qwen.py`, override `after_response`:
+In `adapters/qwen.py`, override `shape_response` to parse text-embedded tool calls back into the structured field smolagents reads:
 
 ```python
 import json, re
 
-if not msg["tool_calls"] and msg["content"]:
-    for m in re.finditer(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", msg["content"], re.S):
+def shape_response(self, response):
+    if response.tool_calls or not response.content:
+        return response
+    parsed = []
+    for i, m in enumerate(re.finditer(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", response.content, re.S)):
         try:
             payload = json.loads(m.group(1))
-            msg["tool_calls"].append({
-                "id": f"qwen_{step}_{len(msg['tool_calls'])}",
-                "name": payload["name"],
-                "arguments": payload.get("arguments", {}),
+            parsed.append({
+                "id": f"qwen_{i}",
+                "type": "function",
+                "function": {"name": payload["name"], "arguments": json.dumps(payload.get("arguments") or {})},
             })
         except json.JSONDecodeError:
-            pass
-    if msg["tool_calls"]:
-        msg["content"] = ""  # avoid double-execution
+            continue
+    if parsed:
+        response.tool_calls = parsed
+        response.content = ""  # avoid double-execution
+    return response
 ```
 
 Re-run the same task. The cell should flip ✗ → ✓.

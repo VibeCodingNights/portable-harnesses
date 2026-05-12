@@ -4,6 +4,22 @@ A guide to picking the right level of reshaping. Read this once before opening a
 
 ---
 
+## The four hook points
+
+Every adapter is a subclass of `adapters.base.Adapter`. You override one or more of these:
+
+| Hook | What it controls | When you reach for it |
+|---|---|---|
+| `sampling: dict` | kwargs forwarded to the OpenAI client (temperature, top_p, max_tokens) | The lab published RL'd defaults different from generic defaults |
+| `completion_overrides: dict` | kwargs forwarded to the same client that override smolagents' defaults | smolagents sets `tool_choice="required"` and your endpoint rejects it |
+| `custom_role_conversions: dict[str, str]` | `{from: to}` smolagents applies to every message role | Model expects `observation`, not `tool` (GLM) |
+| `reshape_messages(messages) -> messages` | Python hook on the message list before the wire | Inject continuation cues (Kimi), wrap tool results in custom envelopes (Qwen) |
+| `shape_response(response) -> response` | Python hook on the ChatMessage returned by the model | Parse text-embedded `<tool_call>` blocks into `response.tool_calls` (Qwen), preserve `reasoning_content` |
+
+`adapters/claude.py` is the smallest possible example — just `sampling` is overridden. `adapters/qwen.py`, `glm.py`, and `kimi.py` are stubs with TODOs.
+
+---
+
 ## Step 1: name what you're seeing
 
 Run with `--verbose`:
@@ -12,20 +28,16 @@ Run with `--verbose`:
 python run.py --task 1 --model qwen --adapter passthrough --verbose
 ```
 
-Two messages matter:
-
-1. **REQUEST** — what got sent. The `messages` array, the `tools` array, the sampling params.
-2. **RESPONSE** — what came back. The `tool_calls` (might be empty!), the `content` (might contain a buried tool call), the `finish_reason`.
-
-Read both. Then ask:
+smolagents will log every step. The questions to ask:
 
 | Question | If yes, you're at this level |
 |---|---|
-| Is the model emitting tool calls inside `content` text instead of a structured `tool_calls` array? | **format-level** |
-| Are tool definitions arriving with the wrong shape, missing keys, dropped types? | **format-level** |
-| Is the model looping on the same call because it never "saw" the result? | **role-level** |
-| Is the model stopping early — one tool call, then `finish_reason: stop` while clearly more steps remain? | **behavioral** |
-| Is sampling default but the model was RL'd at different settings? | **behavioral** |
+| Endpoint 400/404s with a specific complaint (e.g., "tool_choice 'required' is not supported")? | **harness-default** — `completion_overrides` |
+| Is the model emitting tool calls inside `content` text instead of a structured `tool_calls` array? | **format-level** — `shape_response` |
+| Are tool definitions arriving with the wrong shape, missing keys, dropped types? | **format-level** — `reshape_messages` |
+| Is the model looping on the same call because it never "saw" the result? | **role-level** — `custom_role_conversions` |
+| Is the model stopping early — one tool call, then `finish_reason: stop` while clearly more steps remain? | **behavioral** — `reshape_messages` + `sampling` |
+| Is sampling default but the model was RL'd at different settings? | **behavioral** — `sampling` |
 
 The same model can have failures at multiple levels. Address one at a time.
 
@@ -33,85 +45,97 @@ The same model can have failures at multiple levels. Address one at a time.
 
 ## Step 2: pick the smallest possible reshaping
 
-For each level, here's the minimal change that usually moves the needle.
+### Harness-default
+
+This is the cheapest fix. Three of our four endpoints (Qwen, GLM, Kimi) reject `tool_choice="required"`:
+
+```python
+class MyAdapter(Adapter):
+    completion_overrides = {"tool_choice": "auto"}
+```
+
+That single line takes Qwen, GLM, and Kimi from FAIL to PASS on Task 1. It's also the only fix in the Kimi adapter today.
 
 ### Format-level
 
-Override `after_response` to parse text-embedded tool calls:
+Parse text-embedded tool calls in `shape_response`:
 
 ```python
 import re, json
 from adapters.base import Adapter
 
-class MyAdapter(Adapter):
-    def after_response(self, choice, *, model, step):
-        msg = super().after_response(choice, model=model, step=step)
-        if not msg["tool_calls"] and "<tool_call>" in (msg["content"] or ""):
-            for m in re.finditer(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", msg["content"], re.S):
-                try:
-                    p = json.loads(m.group(1))
-                    msg["tool_calls"].append({
-                        "id": f"adapt_{step}_{len(msg['tool_calls'])}",
-                        "name": p["name"],
-                        "arguments": p.get("arguments", {}),
-                    })
-                except json.JSONDecodeError:
-                    pass
-        return msg
-```
-
-Override `shape_tool_result` to wrap the result in the envelope the model wants:
-
-```python
-def shape_tool_result(self, *, tool_call, result, model):
-    payload = json.dumps({"name": tool_call["name"], "content": result}, default=str)
-    return {
-        "role": "user",
-        "content": f"<tool_response>\n{payload}\n</tool_response>",
-    }
+class QwenAdapter(Adapter):
+    def shape_response(self, response):
+        if response.tool_calls or not response.content:
+            return response
+        parsed = []
+        for i, m in enumerate(re.finditer(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", response.content, re.S)):
+            try:
+                p = json.loads(m.group(1))
+                parsed.append({
+                    "id": f"qwen_{i}",
+                    "type": "function",
+                    "function": {"name": p["name"], "arguments": json.dumps(p.get("arguments") or {})},
+                })
+            except json.JSONDecodeError:
+                continue
+        if parsed:
+            response.tool_calls = parsed
+        return response
 ```
 
 ### Role-level
 
-Just swap the role:
+The cleanest fix is `custom_role_conversions` — smolagents will rewrite every `role: tool` to `role: observation` before sending:
 
 ```python
-def shape_tool_result(self, *, tool_call, result, model):
-    return {
-        "role": "observation",
-        "name": tool_call["name"],
-        "content": json.dumps(result, default=str),
-    }
+class GLMAdapter(Adapter):
+    custom_role_conversions = {"tool": "observation"}
 ```
 
-If the API rejects unknown roles, fall back to a `user` turn with a structured prefix:
+If the endpoint rejects unknown roles entirely, fall back to a `user`-turn wrapper in `reshape_messages`:
 
 ```python
-return {
-    "role": "user",
-    "content": f"[observation:{tool_call['name']}] {json.dumps(result, default=str)}",
-}
+def reshape_messages(self, messages):
+    out = []
+    for m in messages:
+        role = m.get("role") if isinstance(m, dict) else getattr(m, "role", None)
+        if role == "tool":
+            name = (m.get("name") if isinstance(m, dict) else getattr(m, "name", "")) or "tool"
+            content = (m.get("content") if isinstance(m, dict) else getattr(m, "content", "")) or ""
+            out.append({"role": "user", "content": f"[observation:{name}] {content}"})
+        else:
+            out.append(m)
+    return out
 ```
 
 ### Behavioral
 
-Match RL'd sampling defaults at the class level:
+Match RL'd sampling at the class level:
 
 ```python
-class MyAdapter(Adapter):
+class KimiAdapter(Adapter):
     sampling = {"temperature": 0.6, "top_p": 1.0}
 ```
 
-Inject continuation cues in `before_request`:
+Inject continuation cues into the system prompt in `reshape_messages`:
 
 ```python
-def before_request(self, *, messages, tools, model, step):
-    if messages and messages[0].get("role") == "system":
-        messages = [
-            {**messages[0], "content": messages[0]["content"] + "\n\nContinue with the next step until every output is written."},
-            *messages[1:],
-        ]
-    return messages, tools
+_REMINDER = "Important: if any step remains unfinished, issue another tool call."
+
+def reshape_messages(self, messages):
+    if not messages:
+        return messages
+    m0 = messages[0]
+    role = m0.get("role") if isinstance(m0, dict) else getattr(m0, "role", None)
+    if role != "system":
+        return messages
+    existing = m0.get("content") if isinstance(m0, dict) else getattr(m0, "content", "")
+    patched = existing + "\n\n" + _REMINDER
+    if isinstance(m0, dict):
+        return [{**m0, "content": patched}, *messages[1:]]
+    m0.content = patched
+    return messages
 ```
 
 ---

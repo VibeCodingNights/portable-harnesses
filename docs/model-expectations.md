@@ -8,7 +8,7 @@ What each of the four models was post-trained against. Read the row for the mode
 
 | Aspect | Convention |
 |---|---|
-| Tool schema | OpenAI-style `{"type": "function", "function": {"name": ..., "parameters": ...}}` (translated from Claude's native `input_schema` by LiteLLM). |
+| Tool schema | OpenAI-style `{"type": "function", "function": {"name": ..., "parameters": ...}}` (OpenRouter translates this to Claude's native `input_schema` upstream). |
 | Tool result role | `tool` with `tool_call_id` matching the call. |
 | Strictness | **Every** assistant message with `tool_calls` must be followed by a `tool_result` for *every* call, in order, before the next assistant turn. Skip one and the API 400s. |
 | Sampling | Temperature 0.2 for tool-heavy agentic loops (Anthropic's published guidance). |
@@ -68,11 +68,11 @@ What each of the four models was post-trained against. Read the row for the mode
 
 ---
 
-## Cross-cutting: what the proxy translates and what it doesn't
+## Cross-cutting: what OpenRouter + smolagents translate, and what they don't
 
-LiteLLM (and the proxy in front of it) translates **the API surface**. It does not translate **the context shape inside the conversation**:
+OpenRouter normalizes **the API surface** (one endpoint, one auth, one model namespace across labs). smolagents normalizes **the agent loop** (one `ToolCallingAgent.run()` regardless of model). Neither touches **the context shape inside the conversation** — and smolagents itself ships with defaults (`tool_choice="required"`, a specific system prompt structure) that *are* part of the harness assumption and will fail against models whose endpoints don't support them.
 
-| Translated by the proxy | Not translated (your job) |
+| Translated for you | Not translated (your job) |
 |---|---|
 | Top-level request envelope | System prompt scaffolding |
 | Tool spec → native tool format | Tool result envelope (e.g., `<tool_response>` tags) |

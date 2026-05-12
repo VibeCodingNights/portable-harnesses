@@ -1,23 +1,28 @@
 """adapters/glm.py — STUB. Role-level reshaping.
 
-GLM-5.1 inherits ChatGLM's pre-tool-calling convention: tool results arrive as a
-turn with role `observation`, not role `tool`. When you hand it an OpenAI-shaped
-`{"role": "tool", ...}` message, the model often acts as if it received nothing
-useful — it'll either re-issue the same tool call (loop) or hallucinate a result.
+GLM-5.1 inherits ChatGLM's pre-tool-calling convention: tool results arrive as
+a turn with role `observation`, not role `tool`. When you hand it an
+OpenAI-shaped `{"role": "tool", ...}` message, the model often acts as if it
+received nothing useful — it'll either re-issue the same tool call (loop) or
+hallucinate a result.
 
-See bugs/glm-observation-role.md.
+See `bugs/glm-observation-role.md`.
 
 The *category* of fix here is ROLE-LEVEL: same content, different role label.
 
 Things to try in this stub:
 
-    1. In `shape_tool_result`, emit `{"role": "observation", ...}` instead of
-       `{"role": "tool", ...}`.
-    2. Some GLM deployments accept `tool` but require the tool name to live
-       under a different key. Check what z.ai's docs say for your deployment.
-    3. The function-call response from GLM sometimes appears as a code block
-       in `content` rather than a structured `tool_calls` array — be ready to
-       parse `function_call` blocks out of text.
+    1. `custom_role_conversions = {"tool": "observation"}` — smolagents will
+       rewrite every `role: tool` message to `role: observation` before the
+       wire. Cleanest fix. Already commented in below.
+
+    2. If z.ai rejects unknown roles at the surface, fall back to wrapping the
+       result in a `user` turn with a structured prefix in `reshape_messages`:
+       `f"[observation:{name}] {content}"`.
+
+    3. Some GLM deployments emit function calls as fenced code blocks in
+       `content` (````function`) instead of structured `tool_calls`. Parse those
+       out in `shape_response`.
 
 Score before/after with:
 
@@ -26,7 +31,6 @@ Score before/after with:
 """
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from adapters.base import Adapter
@@ -37,57 +41,45 @@ class GLMAdapter(Adapter):
     # GLM-5.1 documented defaults for tool-using mode (z.ai docs).
     sampling = {"temperature": 0.95, "top_p": 0.7}
 
-    def before_request(
-        self,
-        *,
-        messages: list[dict],
-        tools: list[dict],
-        model: str,
-        step: int,
-    ) -> tuple[list[dict], list[dict]]:
-        # TODO (attendees): some GLM deployments only honor a `tools` array if
-        # each entry has its `function` block at the top level, not nested.
-        # Try transforming
-        #     {"type": "function", "function": {...}}
-        # into
-        #     {...}
-        # and see whether Qwen-style nesting was breaking discovery.
-        return messages, tools
+    # Required minimum: Z.AI's endpoint on OpenRouter rejects
+    # tool_choice="required" (smolagents' default) with a 404.
+    completion_overrides = {"tool_choice": "auto"}
 
-    def shape_tool_result(self, *, tool_call: dict, result: Any, model: str) -> dict:
-        # TODO (attendees): swap role to "observation".
-        # The ChatGLM heritage means GLM-5.1 was post-trained on traces where
-        # tool results arrived under `observation`. Try:
-        #
-        #     return {
-        #         "role": "observation",
-        #         "name": tool_call["name"],
-        #         "content": json.dumps(result, default=str),
-        #     }
-        #
-        # If z.ai's API rejects unknown roles at the surface, fall back to
-        # role: "user" with a structured prefix:
-        #
-        #     return {
-        #         "role": "user",
-        #         "content": f"[observation:{tool_call['name']}] {json.dumps(result, default=str)}",
-        #     }
-        return super().shape_tool_result(tool_call=tool_call, result=result, model=model)
+    # TODO (attendees): the ROLE-level fix — uncomment and try it.
+    # custom_role_conversions = {"tool": "observation"}
 
-    def after_response(self, choice: Any, *, model: str, step: int) -> dict:
-        # TODO (attendees): when GLM emits a function call as a fenced code
-        # block in `content` instead of structured tool_calls, parse it. Sketch:
+    def reshape_messages(self, messages: list) -> list:
+        # TODO (attendees): if custom_role_conversions doesn't get accepted by
+        # z.ai, fall back to a structured user-turn prefix. Sketch:
         #
-        #     if not msg["tool_calls"] and "```function" in msg["content"]:
-        #         block = re.search(r"```(?:function|tool|json)\n(.*?)```", msg["content"], re.S)
-        #         if block:
-        #             try:
-        #                 fc = json.loads(block.group(1))
-        #                 msg["tool_calls"].append({
-        #                     "id": f"glm_{step}_0",
-        #                     "name": fc.get("name"),
-        #                     "arguments": fc.get("arguments") or fc.get("parameters") or {},
-        #                 })
-        #             except json.JSONDecodeError:
-        #                 pass
-        return super().after_response(choice, model=model, step=step)
+        #     out = []
+        #     for m in messages:
+        #         role = getattr(m, "role", None) or (m.get("role") if isinstance(m, dict) else None)
+        #         if role == "tool":
+        #             name = getattr(m, "name", None) or (m.get("name") if isinstance(m, dict) else "")
+        #             content = getattr(m, "content", None) or (m.get("content") if isinstance(m, dict) else "")
+        #             out.append({"role": "user", "content": f"[observation:{name}] {content}"})
+        #         else:
+        #             out.append(m)
+        #     return out
+        return messages
+
+    def shape_response(self, response: Any) -> Any:
+        # TODO (attendees): if GLM puts a function call in `content` as a fenced
+        # code block, parse it back into `response.tool_calls`. Sketch:
+        #
+        #     import json, re
+        #     if response.tool_calls or not response.content:
+        #         return response
+        #     m = re.search(r"```(?:function|tool|json)\n(.*?)```", response.content, re.S)
+        #     if m:
+        #         try:
+        #             fc = json.loads(m.group(1))
+        #             response.tool_calls = [{
+        #                 "id": "glm_0",
+        #                 "type": "function",
+        #                 "function": {"name": fc.get("name"), "arguments": json.dumps(fc.get("arguments") or fc.get("parameters") or {})},
+        #             }]
+        #         except json.JSONDecodeError:
+        #             pass
+        return response

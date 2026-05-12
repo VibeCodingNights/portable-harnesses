@@ -43,10 +43,10 @@ People arrive, open laptops, connect to wifi. A single card on each table:
 
 > **wifi:** [network/password]
 > **repo:** `github.com/vibecodingnights/portability-tax`
-> **proxy:** `https://proxy.vibecodingnights.com` (all models, no keys needed)
+> **models:** get an OpenRouter key at `openrouter.ai/keys`, add ~$10 credit
 > **start:** `git clone → cd portability-tax → ./setup.sh`
 
-`setup.sh` installs dependencies, verifies proxy connectivity, and health-checks all four models (Claude, Qwen 3.6, GLM-5.1, Kimi K2.6). Four green checkmarks means you're ready.
+`setup.sh` installs dependencies, writes `.env` from the template, and (once they've pasted their OpenRouter key) health-checks all four models (Claude Opus 4.7, Qwen 3.6 Max, GLM-5.1, Kimi K2.6) through OpenRouter. Four green checkmarks means you're ready.
 
 No announcements during this window. Hosts help anyone whose setup script fails.
 
@@ -58,7 +58,7 @@ Script for the host — say this, then stop:
 
 > "Every model shipped this year was post-trained against a specific harness. Qwen expects one tool-calling format. GLM expects `observation` where everyone else expects `tool`. Kimi terminates early when the context shape doesn't match its training. Claude requires every tool_call to have a matching tool result. They all speak 'function calling.' None of them speak it the same way.
 >
-> Tonight you're measuring the gap. The repo has a harness, three MCP tools, and three tasks. Run a task through one model. Swap to another — same harness, same tools, same task. Watch what breaks. Then write the adapter that fixes it.
+> Tonight you're measuring the gap. The repo wraps smolagents' ToolCallingAgent — a real, popular, vendor-neutral agent loop — and points it at four models through OpenRouter. Run a task through one model. Swap to another — same harness, same tools, same task. Watch what breaks. Then write the adapter that fixes it.
 >
 > Three targets on the wall. Pick one. Go."
 
@@ -165,10 +165,14 @@ The advanced path is Targets 2→3. Writing an adapter that moves a model from f
 
 ### Resources Available During Build Time
 
+**Provided by attendees (~5 min, at the door):**
+- One OpenRouter account + key from `openrouter.ai/keys`, ~$10 credit. One key fans out to all four labs — no Anthropic / DashScope / Zhipu / Moonshot accounts needed
+- Optional: a free Brave Search key (`brave.com/search/api/`, 2000 queries/month free tier) for Tasks 2 & 3. Without it, `web_search` returns stubs and Task 1 still works fine
+
 **Pre-provisioned by organizers:**
-- Shared LiteLLM proxy at `https://proxy.vibecodingnights.com` — routes to Claude (Anthropic API), Qwen 3.6 (DashScope), GLM-5.1 (Zhipu BigModel / z.ai), Kimi K2.6 (Moonshot API). Rate-limited per attendee token. No individual API keys needed
-- Three MCP tool servers running on the proxy host: filesystem (scoped sandbox), web search (Brave API), code execution (sandboxed container)
 - Wall-mounted display showing the live scoring table (auto-refreshes from `results/`)
+- Spare OpenRouter credit codes / pre-funded backup keys in a sealed envelope, for attendees who blow their budget or can't sign up
+- The three tools (filesystem, web search, code execution) run in-process from `harness/tools.py` — no infrastructure
 
 **In the repo:**
 - `docs/model-expectations.md` — what each model was RL'd against: tool schema format, system prompt conventions, tool result handling, sampling parameters, known quirks. Covers all four models
@@ -180,7 +184,7 @@ The advanced path is Targets 2→3. Writing an adapter that moves a model from f
 - Qwen 3.6 tool-calling docs + chat template spec
 - GLM-5.1 API reference (z.ai/docs) + function calling format
 - Kimi K2.6 quickstart (platform.kimi.ai/docs/guide/kimi-k2-6-quickstart)
-- LiteLLM message sanitization docs
+- smolagents ToolCallingAgent reference (`smolagents/agents.py`) + OpenAIModel reference (`smolagents/models.py`)
 
 ---
 
@@ -188,7 +192,7 @@ The advanced path is Targets 2→3. Writing an adapter that moves a model from f
 
 Hosts float. No announcements, no check-ins, no schedule. When someone is stuck:
 
-- **"Setup doesn't work"** → Help them run `setup.sh`, verify proxy connectivity
+- **"Setup doesn't work"** → Common causes: (1) no OpenRouter credit — send them to `openrouter.ai/credits`; (2) key typo'd into `.env`; (3) `OPENROUTER_API_KEY` still has the `...` placeholder. Re-run `./setup.sh` after fixing
 - **"The model just fails and I don't know why"** → Point them to verbose output: `python run.py --task 1 --model qwen --verbose`. The verbose flag shows the exact messages sent and received. The failure is in the diff between what was sent and what the model expected
 - **"The model just stops"** → Probably Kimi. Show them the verbose output where `end_turn` fires early. The model thinks it's done. That's the behavioral-level tax
 - **"I wrote an adapter but it doesn't help"** → Look at `docs/model-expectations.md` together. Which convention did they miss? For GLM it's usually tool result format. For Kimi it's usually sampling parameters or system prompt shape
@@ -211,21 +215,18 @@ No pressure. No queue. Host asks "Anyone want to show what they built or what br
 ## Pre-Event Setup (Organizer Checklist)
 
 **1 week before:**
-- [ ] Provision API keys: Anthropic (Claude), DashScope (Qwen 3.6), Zhipu BigModel / z.ai (GLM-5.1), Moonshot (Kimi K2.6)
-- [ ] Deploy LiteLLM proxy with per-attendee rate limiting (token-based auth, ~$5/attendee budget across four models)
-- [ ] Configure LiteLLM model entries: `claude` → Anthropic, `qwen` → DashScope, `glm` → z.ai (`open.bigmodel.cn/api/paas/v4/`), `kimi` → Moonshot (`api.moonshot.cn/v1/`)
-- [ ] Test all three MCP tool servers end-to-end: filesystem, search, code execution
-- [ ] Run all three tasks through Claude baseline — verify they pass
+- [ ] Mint one OpenRouter key with $50–100 of credit as the org backup pool (for attendees who can't sign up at the door). Save it on a USB stick / in a 1Password vault — do NOT print it
+- [ ] Verify the four OpenRouter slugs in `harness/agent.py:MODEL_SLUGS` still resolve (`anthropic/claude-opus-4.7`, `qwen/qwen3.6-max-preview`, `z-ai/glm-5.1`, `moonshotai/kimi-k2.6`). OpenRouter rotates IDs occasionally
+- [ ] Run all three tasks through Claude baseline — verify they pass with the passthrough adapter
 - [ ] Run all three tasks through Qwen, GLM, and Kimi with passthrough adapter — verify they fail in documented ways. Qwen should hit format errors. GLM should loop or ignore results. Kimi should terminate early. If any model passes with passthrough, the task isn't testing portability — fix the task
-- [ ] Print table cards (wifi, repo, proxy URL)
+- [ ] Print table cards (wifi, repo URL, OpenRouter signup URL, suggested $10 credit)
 - [ ] Print reference cards (model docs QR codes for all four models)
 
 **Day of:**
-- [ ] Verify proxy is up and all four models respond
-- [ ] Verify MCP tool servers are running
+- [ ] Confirm OpenRouter is up — ping `openrouter.ai/api/v1/models` and verify the four slugs are listed
 - [ ] Write the three targets on the whiteboard
 - [ ] Set up wall display with auto-refreshing scoring table
-- [ ] Test `setup.sh` on a clean machine (no cached deps)
+- [ ] Test `setup.sh` on a clean machine (no cached deps, fresh OpenRouter key)
 
 ---
 
@@ -235,20 +236,19 @@ No pressure. No queue. Host asks "Anyone want to show what they built or what br
 vibecodingnights/portability-tax/
 │
 ├── README.md                           # Theme, quick start, targets
-├── .env.example                        # PROXY_URL, PROXY_TOKEN template
-├── setup.sh                            # Install deps, verify proxy, health-check 4 models
+├── .env.example                        # OPENROUTER_API_KEY template (+ optional BRAVE_API_KEY)
+├── setup.sh                            # Install deps, validate OpenRouter key, health-check 4 models
 ├── run.py                              # Main entry: --task, --model, --adapter, --verbose
 ├── bench.sh                            # Run all tasks × all models × all adapters, output table
 │
-├── harness/                            # The agent loop (model-agnostic)
-│   ├── agent.py                        # Core loop: plan → tool_call → tool_result → repeat
-│   ├── litellm_config.yaml             # Model registry (Claude, Qwen 3.6, GLM-5.1, Kimi K2.6)
-│   └── mcp_config.json                 # MCP server endpoints (filesystem, search, codegen)
+├── harness/                            # Thin facade over smolagents.ToolCallingAgent
+│   ├── agent.py                        # Agent + RouterModel + MODEL_SLUGS + LAB_PROVIDERS
+│   └── tools.py                        # Five @tool-decorated functions (fs_read/write/list, web_search, codegen_run)
 │
-├── tools/                              # MCP tool servers (pre-built, attendees don't modify)
-│   ├── filesystem-server/
-│   │   ├── package.json
-│   │   └── index.ts
+├── tools/                              # Reference MCP server implementations (not used by default;
+│   ├── filesystem-server/              # the harness uses in-process tools.py. Kept as the
+│   │   ├── package.json                # "this is the production shape" reference for attendees
+│   │   └── index.ts                    # who want to expose tools to Claude Desktop / other MCP hosts.
 │   ├── search-server/
 │   │   ├── package.json
 │   │   └── index.ts
@@ -291,7 +291,7 @@ vibecodingnights/portability-tax/
 └── docs/
     ├── model-expectations.md           # Post-training conventions: all 4 models
     ├── known-bugs.md                   # Compiled format-coupling bugs with source links
-    ├── litellm-setup.md                # Adding your own model to the proxy
+    ├── litellm-setup.md                # Bring your own model: add a slug, use direct lab keys, run a local proxy
     └── writing-adapters.md             # Guide: format-level vs role-level vs behavioral
 ```
 

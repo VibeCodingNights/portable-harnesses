@@ -36,24 +36,27 @@ Role-level coupling. GLM's training data labeled tool results with `role: observ
 
 ## Fix sketch
 
-In `adapters/glm.py`, override `shape_tool_result`:
+In `adapters/glm.py`, the cleanest fix is one line — smolagents will rewrite every `role: tool` message to `role: observation` for you:
 
 ```python
-def shape_tool_result(self, *, tool_call, result, model):
-    return {
-        "role": "observation",
-        "name": tool_call["name"],
-        "content": json.dumps(result, default=str),
-    }
+class GLMAdapter(Adapter):
+    custom_role_conversions = {"tool": "observation"}
 ```
 
-If the proxy/API rejects unknown roles at the surface layer, fall back to a `user` turn with a structured prefix that GLM was likely also exposed to during training:
+If z.ai's endpoint rejects unknown roles at the surface, fall back to a `user`-turn wrapper in `reshape_messages`:
 
 ```python
-return {
-    "role": "user",
-    "content": f"[observation:{tool_call['name']}]\n{json.dumps(result, default=str)}",
-}
+def reshape_messages(self, messages):
+    out = []
+    for m in messages:
+        role = m.get("role") if isinstance(m, dict) else getattr(m, "role", None)
+        if role == "tool":
+            name = (m.get("name") if isinstance(m, dict) else getattr(m, "name", "")) or "tool"
+            content = (m.get("content") if isinstance(m, dict) else getattr(m, "content", "")) or ""
+            out.append({"role": "user", "content": f"[observation:{name}]\n{content}"})
+        else:
+            out.append(m)
+    return out
 ```
 
 Either form should break the loop.

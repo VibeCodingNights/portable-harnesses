@@ -46,28 +46,30 @@ Behavioral coupling. Three knobs likely matter:
 
 ## Fix sketch
 
+There's also a harness-level prerequisite: smolagents sets `tool_choice="required"`, which Moonshot rejects in combination with Kimi's thinking mode. So step zero is `completion_overrides = {"tool_choice": "auto"}`. Once you can issue a request at all, the behavioral fixes:
+
 In `adapters/kimi.py`:
 
 ```python
 sampling = {"temperature": 0.6, "top_p": 1.0}
+completion_overrides = {"tool_choice": "auto"}
 
-def before_request(self, *, messages, tools, model, step):
-    # Inject continuation cue into system prompt
-    if messages and messages[0].get("role") == "system":
-        messages = [
-            {**messages[0], "content": messages[0]["content"] + "\n\nReview the original task after each tool result. Only stop when every step is finished."},
-            *messages[1:],
-        ]
-    return messages, tools
+_REMINDER = "Review the original task after each tool result. Only call `final_answer` when every step is finished."
 
-def shape_tool_result(self, *, tool_call, result, model):
-    content = json.dumps({"step_result": result, "status": "intermediate"}, default=str)
-    return {
-        "role": "tool",
-        "tool_call_id": tool_call["id"],
-        "name": tool_call["name"],
-        "content": content,
-    }
+def reshape_messages(self, messages):
+    # Inject a continuation cue into the system prompt
+    if not messages:
+        return messages
+    m0 = messages[0]
+    role = m0.get("role") if isinstance(m0, dict) else getattr(m0, "role", None)
+    if role != "system":
+        return messages
+    existing = m0.get("content") if isinstance(m0, dict) else getattr(m0, "content", "")
+    patched = existing + "\n\n" + _REMINDER
+    if isinstance(m0, dict):
+        return [{**m0, "content": patched}, *messages[1:]]
+    m0.content = patched
+    return messages
 ```
 
 Re-run. If you see Kimi reach step 2 you've moved the cell.

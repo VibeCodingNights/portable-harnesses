@@ -1,48 +1,54 @@
 """adapters/kimi.py — STUB. Behavioral-level reshaping.
 
-Kimi K2.6 is the trickiest of the four. The bug isn't that the wire format is
-wrong — it's that the *model thinks it's done* before the harness has finished
-collecting outputs. Kimi was RL'd inside Moonshot's native agentic loop, where
-end-of-turn signals fire at specific context shapes. Hand it a context shape
-that doesn't match (different system prompt structure, missing scratchpad
-markers, OpenAI-style tool_result blocks), and it issues a premature
-`finish_reason: end_turn` after the first tool call.
+Kimi K2.6 is the trickiest of the four. Two distinct taxes show up in the
+smolagents-based harness:
 
-See bugs/kimi-premature-termination.md.
+    A. **tool_choice='required' is incompatible with thinking mode.** smolagents
+       defaults to `tool_choice="required"` to force a tool call every turn.
+       Moonshot rejects this when thinking is enabled — and Kimi K2.6 has
+       thinking enabled by default. Outright 400 on the first request.
+       Fix: `completion_overrides = {"tool_choice": "auto"}`.
+
+    B. **Premature termination at the wrong context shape.** Kimi was RL'd
+       inside Moonshot's native agentic loop, where end-of-turn signals fire
+       at specific context shapes. Hand it a context shape that doesn't match
+       (different system prompt structure, missing scratchpad markers, no
+       continuation cue after a tool result), and it issues an early
+       `finish_reason: stop` after the first tool call.
+       See `bugs/kimi-premature-termination.md`.
 
 The *category* of fix here is BEHAVIORAL: the wire works, the model just stops.
 
 Things to try in this stub:
 
-    1. Lock sampling to Moonshot's published defaults: temperature 0.6, top_p 1.0.
-       Kimi K2.6 was RL'd at these settings — drift breaks calibration.
-    2. Inject a system prompt suffix that looks like the agentic-loop scaffolding
-       Kimi was trained inside: explicit "you have not finished yet — review what
-       remains" cues after each tool result.
-    3. Re-stamp the tool-result envelope so it doesn't look like a "final" turn
-       to Kimi's RL'd termination predictor.
+    1. Uncomment `completion_overrides = {"tool_choice": "auto"}` — the
+       minimal viable fix for the 400.
+
+    2. `sampling`: Moonshot's published defaults are temperature 0.6, top_p 1.0.
+       Kimi was RL'd at these — drift breaks calibration. Already set below.
+
+    3. `reshape_messages`: inject a continuation reminder into the system
+       prompt, or append a brief user-shaped nudge after each tool result.
+       This re-opens the turn in a shape Kimi's terminator was trained against.
 
 Score before/after with:
 
-    python run.py --task 2 --model kimi --adapter passthrough --verbose
-    python run.py --task 2 --model kimi --adapter kimi --verbose
+    python run.py --task 1 --model kimi --adapter passthrough --verbose
+    python run.py --task 1 --model kimi --adapter kimi --verbose
 """
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from adapters.base import Adapter
 
 
-# Kimi K2.6 was RL'd at these sampling settings inside Moonshot's native loop.
-# Drifting from them is a documented cause of early termination.
 _KIMI_SAMPLING = {"temperature": 0.6, "top_p": 1.0}
-
 
 _CONTINUATION_REMINDER = (
     "Important: review the original task. If any step remains unfinished, "
-    "issue another tool call. Only stop when every required output has been written."
+    "issue another tool call. Only call `final_answer` when every required "
+    "output has been written."
 )
 
 
@@ -50,44 +56,32 @@ class KimiAdapter(Adapter):
     name = "kimi"
     sampling = _KIMI_SAMPLING
 
-    def before_request(
-        self,
-        *,
-        messages: list[dict],
-        tools: list[dict],
-        model: str,
-        step: int,
-    ) -> tuple[list[dict], list[dict]]:
-        # TODO (attendees): patch the system prompt with continuation cues that
-        # match Kimi's RL-time scaffolding. Sketch:
+    # Required minimum: smolagents sets tool_choice="required" by default,
+    # which Moonshot rejects in combination with Kimi's thinking mode.
+    # Override to "auto". Without this, the agent 400s on the first request.
+    completion_overrides = {"tool_choice": "auto"}
+
+    def reshape_messages(self, messages: list) -> list:
+        # TODO (attendees): patch the system prompt with continuation cues
+        # that match Kimi's RL-time scaffolding. Sketch (defensive to dict
+        # vs ChatMessage):
         #
-        #     if messages and messages[0].get("role") == "system":
-        #         messages = [
-        #             {**messages[0], "content": messages[0]["content"] + "\n\n" + _CONTINUATION_REMINDER},
-        #             *messages[1:],
-        #         ]
+        #     if not messages:
+        #         return messages
+        #     m0 = messages[0]
+        #     role = getattr(m0, "role", None) or (m0.get("role") if isinstance(m0, dict) else None)
+        #     if role == "system":
+        #         existing = getattr(m0, "content", None) or (m0.get("content") if isinstance(m0, dict) else "")
+        #         patched_content = existing + "\n\n" + _CONTINUATION_REMINDER
+        #         if isinstance(m0, dict):
+        #             messages = [{**m0, "content": patched_content}, *messages[1:]]
+        #         else:
+        #             m0.content = patched_content
+        return messages
 
-        # TODO (attendees): after every tool result, append a brief user-shaped
-        # nudge ("Continue. What's the next step?"). This re-opens the turn in
-        # a shape Kimi's terminator was trained against.
-
-        return messages, tools
-
-    def shape_tool_result(self, *, tool_call: dict, result: Any, model: str) -> dict:
-        # TODO (attendees): wrap the result so it doesn't read like a closing turn.
-        # Try a "step result" framing:
-        #
-        #     content = json.dumps({
-        #         "step_result": result,
-        #         "status": "intermediate",   # not "final"
-        #     }, default=str)
-        return super().shape_tool_result(tool_call=tool_call, result=result, model=model)
-
-    def after_response(self, choice: Any, *, model: str, step: int) -> dict:
-        # TODO (attendees): if Kimi emits an empty content + no tool_calls and
-        # finish_reason="stop"/"end_turn" before the task is plausibly done,
-        # consider re-prompting once with the continuation reminder before giving up.
-        # The harness sees no tool_calls and exits — that's the bug. The fix is
-        # either here (force a continuation) or in before_request (preempt with
-        # stronger cues so it never fires end_turn early in the first place).
-        return super().after_response(choice, model=model, step=step)
+    def shape_response(self, response: Any) -> Any:
+        # TODO (attendees): if Kimi emits empty content + no tool_calls before
+        # the task is plausibly done, that's premature termination. You can
+        # detect it here and surface a clearer signal, or short-circuit by
+        # injecting a synthetic tool_call (less clean).
+        return response

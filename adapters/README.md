@@ -2,7 +2,7 @@
 
 This is where you work.
 
-An adapter reshapes context to match what a model was post-trained against. The harness is identical for every model. The adapter is what lets the same harness run a model the model wants to be run.
+An adapter is a small object that tells the harness (smolagents' `ToolCallingAgent`) how to talk to a model that was post-trained against a different shape than smolagents' defaults assume.
 
 ## Three levels of reshaping
 
@@ -10,37 +10,37 @@ Watch for these as you read failures and write fixes:
 
 | Level | Where it lives | Example |
 |---|---|---|
-| **Format-level** | function-spec shape, tool-call envelope | Qwen's `<tool_call>` / `<tool_response>` tags, Jinja2 chat template quirks |
-| **Role-level** | which `role` carries which content | GLM expects tool results as `observation`, not `tool` |
-| **Behavioral** | sampling, system prompt scaffolding, end-of-turn cues | Kimi K2.6 terminating early when the context doesn't match its RL'd loop |
+| **Harness-default** | `completion_overrides` | Three of our four endpoints reject smolagents' `tool_choice="required"` |
+| **Format-level** | `shape_response`, `reshape_messages` | Qwen's `<tool_call>` / `<tool_response>` tags, text-embedded tool calls |
+| **Role-level** | `custom_role_conversions`, `reshape_messages` | GLM expects tool results as `observation`, not `tool` |
+| **Behavioral** | `sampling`, `reshape_messages` | Kimi K2.6 terminating early when the context doesn't match its RL'd loop |
 
 If your adapter doesn't move a model from ✗ to ✓, you've probably named the wrong level.
 
 ## The interface
 
-`base.py` defines four hooks:
+`base.py` exposes five surfaces:
 
-- `before_request(messages, tools, model, step)` — reshape outgoing context
-- `after_response(choice, model, step)` — normalize the response (parse text-embedded tool calls, etc.)
-- `shape_tool_result(tool_call, result, model)` — frame the tool result the way the model wants
-- `sampling` — class-level dict of `temperature` / `top_p`
+- `sampling: dict` — class-level kwargs forwarded to the OpenAI client (`temperature`, `top_p`, `max_tokens`)
+- `completion_overrides: dict` — class-level kwargs that override smolagents' defaults (`tool_choice`, etc.)
+- `custom_role_conversions: dict[str, str]` — `{from: to}` mapping smolagents applies to every message role before the wire
+- `reshape_messages(messages) -> messages` — Python hook on the message list before sending
+- `shape_response(response) -> response` — Python hook on the `ChatMessage` returned by the model
 
-Override only what you need. The base class default-handles the OpenAI-shaped path.
+Override only what you need. The base class is identity for the hooks and empty for the dicts.
 
 ## Workflow
 
-1. Run with `--verbose` and the passthrough adapter. Watch the actual messages.
+1. Run with `--verbose` and the passthrough adapter. Watch what the agent prints.
 2. Find what differs from what the model expects (use `docs/model-expectations.md`).
-3. Edit the stub. Add the smallest reshaping that fixes one thing.
+3. Edit the stub. Start with the smallest reshaping (often `completion_overrides` or `custom_role_conversions`).
 4. Re-run. Compare. Iterate.
 5. When `python run.py --task N --model M --adapter M` passes for at least one task that fails under passthrough, you've measured the tax. PR it.
 
 ## Reference
 
-`claude.py` is the complete reference. It only really shows how to enforce
-tool_call/tool_result pairing and stable JSON content, but that's the *pattern* —
-read the hooks, see what's idiomatic, then write your model's adapter the same way.
+`claude.py` is the smallest possible adapter — just `sampling` is overridden, because Anthropic-direct happens to fit smolagents' defaults cleanly. Read it as the *pattern*, then look at `qwen.py` / `glm.py` / `kimi.py` for the active stubs (each ships with the harness-default fix; format/role/behavioral fixes are TODOs).
 
-`docs/model-expectations.md` — what each model was RL'd against
-`docs/writing-adapters.md` — guide on picking format/role/behavioral
-`bugs/` — pre-documented failures, source repos, evidence
+- `docs/model-expectations.md` — what each model was RL'd against
+- `docs/writing-adapters.md` — guide on picking the right hook
+- `bugs/` — pre-documented failures, source repos, evidence
