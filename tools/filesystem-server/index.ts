@@ -1,9 +1,8 @@
 // tools/filesystem-server/index.ts — MCP filesystem server, scoped to SANDBOX_DIR.
 //
-// Pre-built. Attendees do not modify. The local in-process equivalent lives in
-// harness/tools.py and is what `python run.py` uses by default. This server is
-// what the proxy exposes at /mcp/filesystem so MCP-native harnesses (Claude
-// Desktop, etc.) can hit it.
+// Reference implementation in stdio-MCP shape. The Python harness in run.py
+// talks to harness/tools.py directly; this server is for attendees who want to
+// expose the same sandboxed filesystem to Claude Desktop / another MCP host.
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";

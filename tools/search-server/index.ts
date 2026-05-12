@@ -1,7 +1,8 @@
 // tools/search-server/index.ts — MCP web-search server, fronting Brave Search.
 //
-// Pre-built. Attendees do not modify. Per-attendee rate limiting happens at
-// the LiteLLM proxy layer; this server is shared.
+// Reference implementation. The Python harness in run.py talks to harness/tools.py
+// directly; this stdio MCP server is for attendees who want to expose the same
+// search tool to Claude Desktop / another MCP host. Run with: BRAVE_API_KEY=... npx tsx index.ts
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";

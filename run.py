@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import time
 import traceback
@@ -51,6 +52,13 @@ def main() -> int:
 
     task_spec = task_path.read_text()
     adapter = load_adapter(args.adapter)
+
+    # Wipe the previous run's output so the eval scores THIS run, not a stale
+    # vendors.json left over from the last model's success.
+    sandbox_root = ROOT / os.environ.get("SANDBOX_DIR", "sandbox")
+    output_dir = sandbox_root / "output"
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
 
     agent = Agent(
         model=args.model,

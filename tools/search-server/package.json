@@ -2,7 +2,7 @@
   "name": "@portable-harnesses/search-server",
   "version": "0.1.0",
   "private": true,
-  "description": "MCP web-search server, fronts a Brave Search API key. Pre-built; attendees do not modify.",
+  "description": "MCP web-search server (Brave). Reference implementation; run.py uses harness/tools.py instead.",
   "type": "module",
   "scripts": {
     "build": "tsc",

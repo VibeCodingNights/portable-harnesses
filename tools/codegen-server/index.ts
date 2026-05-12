@@ -1,9 +1,9 @@
 // tools/codegen-server/index.ts — MCP code-execution server.
 //
-// Pre-built. Attendees do not modify. The production deployment runs each
-// execution in a fresh Docker container with strict CPU/memory limits, no
-// network, and a 30s wall clock. This file exposes the MCP surface; the
-// container plumbing lives in the proxy host's deploy scripts.
+// Reference implementation. The Python harness in run.py uses harness/tools.py's
+// in-process subprocess version. For real isolation, wrap each execution in a
+// container with CPU/memory limits, no network, and a 30s wall clock — this
+// stdio MCP wrapper is the right shape; the container plumbing is on you.
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";

@@ -2,7 +2,7 @@
   "name": "@portable-harnesses/codegen-server",
   "version": "0.1.0",
   "private": true,
-  "description": "MCP code-execution server. Sandboxed Python via subprocess + container. Pre-built; attendees do not modify.",
+  "description": "MCP code-execution server. Reference implementation; run.py uses harness/tools.py instead.",
   "type": "module",
   "scripts": {
     "build": "tsc",
