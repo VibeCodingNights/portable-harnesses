@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibecodingnights.com/portable-harnesses/schemas/trace.schema.json",
+  "title": "Run Record",
+  "description": "One agentic run: a model × task × adapter combination, plus the full transcript and optional pre-computed alignment metadata. Emitted by run.py; consumed by the alignment engine, the web viewer, and bench.sh tabulation.",
+  "type": "object",
+  "required": [
+    "run_id",
+    "task",
+    "model",
+    "adapter",
+    "completed",
+    "tool_calls",
+    "errors",
+    "loops",
+    "early_termination",
+    "transcript"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Content-addressed hash of inputs: task + model + adapter + seed + tool_versions + prompt_versions. Same hash = same trace = cache hit per D6.",
+      "pattern": "^[a-f0-9]{8,64}$"
+    },
+    "task": {
+      "type": "integer",
+      "enum": [1, 2, 3],
+      "description": "Task ID."
+    },
+    "model": {
+      "type": "string",
+      "enum": ["claude", "qwen", "glm", "kimi"],
+      "description": "Short model name. Resolves to OpenRouter slug via harness/agent.py:MODEL_SLUGS."
+    },
+    "adapter": {
+      "type": "string",
+      "enum": ["passthrough", "claude", "qwen", "glm", "kimi"],
+      "description": "Adapter applied. 'passthrough' = no reshaping; named adapters apply per-model post-training compensations."
+    },
+    "seed": {
+      "type": ["integer", "null"],
+      "description": "RNG seed for deterministic re-execution. Null when temperature > 0 or no seeding pathway available."
+    },
+    "tool_versions": {
+      "type": "object",
+      "description": "Version stamp per tool name. Folds into run_id hash so tool changes invalidate cache.",
+      "additionalProperties": { "type": "string" }
+    },
+    "prompt_versions": {
+      "type": "object",
+      "description": "Version stamp per prompt component (system, task spec). Folds into run_id hash.",
+      "additionalProperties": { "type": "string" }
+    },
+    "elapsed_s": {
+      "type": "number",
+      "description": "Wall-clock seconds from agent.run start to completion or exception.",
+      "minimum": 0
+    },
+    "completed": {
+      "type": "boolean",
+      "description": "Eval verdict — did the agent satisfy the task's structural correctness checks."
+    },
+    "tool_calls": {
+      "type": "integer",
+      "description": "Count of successful tool calls in the transcript.",
+      "minimum": 0
+    },
+    "errors": {
+      "type": "integer",
+      "description": "Count of tool errors + agent errors.",
+      "minimum": 0
+    },
+    "loops": {
+      "type": "integer",
+      "description": "Heuristic count of repeated identical tool calls (≥3 of same name+first-arg).",
+      "minimum": 0
+    },
+    "early_termination": {
+      "type": "boolean",
+      "description": "True if the agent stopped without producing required outputs (the Kimi failure mode signature)."
+    },
+    "notes": {
+      "type": "string",
+      "description": "One-line human-readable summary from eval.py."
+    },
+    "agent_error": {
+      "type": ["string", "null"],
+      "description": "Top-level exception caught in run.py, formatted as 'Type: message'. Null on clean termination."
+    },
+    "agent_error_detail": {
+      "type": ["object", "null"],
+      "description": "Structured form of the top-level error when extractable: exception type, HTTP status, provider, request id, response body. Reconstructed by walking __cause__/__context__ chain.",
+      "properties": {
+        "type":          { "type": "string", "description": "Fully-qualified exception type (module.ClassName)." },
+        "status_code":   { "type": ["integer", "null"] },
+        "code":          { "type": ["string", "integer", "null"], "description": "Provider error code if present." },
+        "request_id":    { "type": ["string", "null"] },
+        "param":         { "type": ["string", "null"] },
+        "body":          { "description": "Raw error body from the provider (dict, str, or null)." },
+        "response_text": { "type": ["string", "null"], "description": "Truncated HTTP response text when available." }
+      },
+      "additionalProperties": true
+    },
+    "agent_error_traceback": {
+      "type": ["string", "null"],
+      "description": "Full Python traceback for the top-level exception. Captured unconditionally — not just under --verbose."
+    },
+    "transcript": {
+      "type": "array",
+      "description": "Full transcript translated from smolagents memory. Required for alignment, step cards, and the lane view.",
+      "items": { "$ref": "#/$defs/Message" }
+    },
+    "alignment": {
+      "type": ["object", "null"],
+      "description": "Pre-computed alignment metadata. Null until the aligner runs (C1.1); populated by C1.3.",
+      "properties": {
+        "column_map": {
+          "type": "array",
+          "description": "One entry per transcript step, mapping step_idx → alignment column.",
+          "items": { "$ref": "#/$defs/ColumnAssignment" }
+        },
+        "anchor_hits": {
+          "type": "array",
+          "description": "Which anchors fired and at which transcript step.",
+          "items": { "$ref": "#/$defs/AnchorHit" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Message": {
+      "type": "object",
+      "required": ["step_idx", "role"],
+      "properties": {
+        "step_idx": {
+          "type": "integer",
+          "description": "Zero-based index into the transcript.",
+          "minimum": 0
+        },
+        "role": {
+          "type": "string",
+          "enum": ["assistant", "tool", "user", "system"]
+        },
+        "content": {
+          "type": ["string", "null"],
+          "description": "Free-text content. Assistant: model output. Tool: result body. User: task spec or follow-up. System: instructions."
+        },
+        "tool_calls": {
+          "type": "array",
+          "description": "Present only on assistant messages that issue tool calls.",
+          "items": { "$ref": "#/$defs/ToolCall" }
+        },
+        "name": {
+          "type": ["string", "null"],
+          "description": "Tool name. Present on role=tool messages."
+        },
+        "tool_call_id": {
+          "type": ["string", "null"],
+          "description": "Correlates a role=tool message back to its assistant tool_call by id."
+        }
+      }
+    },
+    "ToolCall": {
+      "type": "object",
+      "required": ["id", "name", "arguments"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Smolagents-assigned call id; correlates with role=tool tool_call_id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Tool name. One of: fs_read, fs_write, fs_list, web_search, codegen_run, final_answer."
+        },
+        "arguments": {
+          "type": "object",
+          "description": "Raw arguments as the model emitted them."
+        },
+        "signature": {
+          "type": ["string", "null"],
+          "description": "Canonical signature from harness/signature.py. Stable under cosmetic variation. Used for anchor matching and equivalent-tier alignment."
+        }
+      }
+    },
+    "ColumnAssignment": {
+      "type": "object",
+      "required": ["step_idx", "column_id", "column_type"],
+      "properties": {
+        "step_idx": { "type": "integer", "minimum": 0 },
+        "column_id": {
+          "type": "string",
+          "description": "Stable id for the alignment column. Anchor columns: 'anchor:<anchor_id>'. Free columns: 'free:<sequence>'."
+        },
+        "column_type": {
+          "type": "string",
+          "enum": ["anchor", "free"]
+        },
+        "tier": {
+          "type": "string",
+          "enum": ["exact", "equivalent", "suggestive"],
+          "description": "Confidence tier from D3. Only meaningful in free columns matched cross-lane."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "AnchorHit": {
+      "type": "object",
+      "required": ["anchor_id", "satisfied"],
+      "properties": {
+        "anchor_id": { "type": "string" },
+        "satisfied": { "type": "boolean" },
+        "step_idx": {
+          "type": ["integer", "null"],
+          "description": "Step where this anchor fired. Null if not satisfied."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many times this anchor's signature appeared (for count-constrained anchors)."
+        }
+      }
+    }
+  }
+}

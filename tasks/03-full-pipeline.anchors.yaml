@@ -1,0 +1,55 @@
+# Anchor specification for Task 3 — Full Pipeline.
+#
+# Four invariants in dependency order: search → write csv → execute → read.
+# The boss task. Each anchor is a link in the chain; missing any one means a
+# dropped thread. The dependency-chain shape is what makes this task hard —
+# behavioral failures (Kimi end_turn after step 2) show as missing late anchors.
+#
+# Note: eval.py:_score_task3 also requires the final assistant message to
+# contain "4". That's content correctness (F6 territory), not structural —
+# kept out of the anchor set deliberately.
+
+task: 3
+
+anchors:
+
+  - id: search_web
+    signature_pattern: "web_search(*)"
+    required: true
+    description: |
+      First link in the chain. Gather model/lab/strength info.
+
+  - id: write_csv
+    signature_pattern: "fs_write(path=*models.csv)"
+    required: true
+    order_after: [search_web]
+    description: |
+      Materialize the structured data file. eval.py additionally checks for
+      exactly 5 lines (header + 4 rows) — content-correctness, separate from
+      this structural anchor.
+
+  - id: run_code
+    signature_pattern: "codegen_run(*)"
+    required: true
+    order_after: [write_csv]
+    description: |
+      Execute a Python program. The program should read models.csv and write
+      count.txt — but the anchor only verifies codegen_run was called. The
+      next anchor (write_count) verifies the program actually wrote the file.
+
+      Most behavioral failures (Kimi) end here: the model thinks it's done
+      after writing the CSV and never fires codegen_run.
+
+  - id: write_count
+    signature_pattern: "fs_write(path=*count.txt)"
+    required: false
+    order_after: [run_code]
+    description: |
+      The codegen subprocess writes count.txt — but it does so via subprocess
+      fs APIs, not as a tool call. A `fs_write(path=*count.txt)` tool call
+      will not normally fire. This anchor is descriptive-only (required=false):
+      it documents the dependency chain but does NOT constrain alignment.
+      The structural invariant ("a file at count.txt exists") is verified by
+      eval.py, not by the trace.
+
+      TODO: revisit when alignment over subprocess-written files is supported.

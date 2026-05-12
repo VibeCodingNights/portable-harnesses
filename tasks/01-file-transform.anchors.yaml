@@ -1,0 +1,26 @@
+# Anchor specification for Task 1 — File Transform.
+#
+# Two invariants: read the input, write the output. Everything between is
+# free — the model can plan, think out loud, list directories, do whatever
+# it needs. Failing to hit either anchor = failed alignment.
+
+task: 1
+
+anchors:
+
+  - id: read_input
+    signature_pattern: "fs_read(path=*sample-data.md)"
+    required: true
+    description: |
+      Read the source file. Anchor canonicalizes the path so '/abs/path/sample-data.md'
+      and 'sample-data.md' both match. Models that never call fs_read with
+      anything resembling the input file have failed before they started.
+
+  - id: write_output
+    signature_pattern: "fs_write(path=*vendors.json)"
+    required: true
+    order_after: [read_input]
+    description: |
+      Write the structured output. The eval (tasks/eval.py:_score_task1)
+      additionally checks content equality with tasks/expected/01-expected.json
+      — that is content correctness, separate from this structural anchor.

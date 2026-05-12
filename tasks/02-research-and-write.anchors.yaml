@@ -1,0 +1,33 @@
+# Anchor specification for Task 2 — Research and Write.
+#
+# Two invariants: search the web (one or more times), then write the report.
+# The number of searches is bounded only at the bottom (≥1); the spec says
+# "at most 3" but a one-shot agent reading a single result counts as valid.
+# Multiple searches between the first and the write are free — that's a
+# legitimate path, not a failure shape.
+
+task: 2
+
+anchors:
+
+  - id: search_web
+    signature_pattern: "web_search(*)"
+    required: true
+    count:
+      min: 1
+      max: null
+    description: |
+      At least one successful web_search call. eval.py:_score_task2 additionally
+      requires the call's tool result not contain "error" — that's an eval
+      detail, not a structural anchor. Looping is fine here (some models do
+      issue 2–3 searches to refine); failure case is zero searches.
+
+  - id: write_report
+    signature_pattern: "fs_write(path=*qwen-tool-calling-summary.md)"
+    required: true
+    order_after: [search_web]
+    description: |
+      Write the synthesized report. Path is brittle — the file name is in the
+      task spec; models that hallucinate a different name fail this anchor and
+      the eval simultaneously. That's two reads of the same observation, which
+      is fine.

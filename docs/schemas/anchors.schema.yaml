@@ -1,0 +1,108 @@
+# anchors.schema.yaml — meta-schema for task-level anchor specifications.
+#
+# Each task gets a sibling file `tasks/<NN>-<slug>.anchors.yaml` declaring the
+# *invariants* — the tool calls any valid solution must satisfy, regardless of
+# what alternative paths the model takes between them. Anchors are the load-
+# bearing structural elements of fuzzy alignment (per HYPERGRAPH C0.2).
+#
+# Honest fuzzy alignment principle: an anchor is what must happen, not what
+# typically happens. If a legitimate alternative trajectory between anchors
+# is plausible, that path is *free* — not an anchor requirement.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://vibecodingnights.com/portable-harnesses/schemas/anchors.schema.yaml"
+title: "Task Anchor Specification"
+
+type: object
+required: [task, anchors]
+additionalProperties: false
+
+properties:
+  task:
+    type: integer
+    enum: [1, 2, 3]
+    description: "Task ID this anchor set applies to."
+
+  anchors:
+    type: array
+    minItems: 1
+    items:
+      $ref: "#/$defs/Anchor"
+    description: "Ordered list of anchor invariants. Order in this list does NOT imply temporal order in the trace — use `order_after` for that."
+
+$defs:
+
+  Anchor:
+    type: object
+    required: [id, signature_pattern, required]
+    additionalProperties: false
+    properties:
+
+      id:
+        type: string
+        pattern: "^[a-z][a-z0-9_]*$"
+        description: |
+          Stable identifier for this anchor. Examples: 'read_input',
+          'write_output', 'first_search'. Used as the anchor column id
+          in alignment output: 'anchor:<id>'.
+
+      signature_pattern:
+        type: string
+        description: |
+          Tool call pattern. Syntax: `tool_name(arg=value|*, ...)`.
+
+          Wildcards:
+            - `*` — matches any value for this arg
+            - `*<suffix>` — matches values ending in <suffix>
+            - `<prefix>*` — matches values starting with <prefix>
+            - omitted arg — does not constrain
+
+          Args are canonicalized via harness/signature.py before matching;
+          'sample-data.md' and '/abs/path/sample-data.md' both match
+          `path=*sample-data.md`.
+
+          Examples:
+            fs_read(path=*sample-data.md)
+            fs_write(path=*vendors.json)
+            web_search(*)
+            codegen_run(*)
+
+      required:
+        type: boolean
+        description: |
+          If true, missing this anchor implies the run failed structural
+          alignment. If false, the anchor is descriptive — it tracks
+          something that may happen, but absence isn't failure.
+
+      count:
+        type: object
+        additionalProperties: false
+        properties:
+          min:
+            type: integer
+            minimum: 0
+            default: 1
+          max:
+            type: ["integer", "null"]
+            minimum: 1
+            default: 1
+        description: |
+          How many times this signature must appear. Defaults to exactly 1.
+          Use `{min: 1, max: null}` for "at least once". Use `{min: 0, max: 5}`
+          for "optional, capped at 5" (suspect loops above max).
+
+      order_after:
+        type: array
+        items:
+          type: string
+        description: |
+          Anchor IDs that must precede this one in transcript order. If any
+          listed anchor fires later in the trace than this anchor, the
+          ordering constraint is violated and the alignment marks this
+          anchor's column with a temporal-order warning.
+
+      description:
+        type: string
+        description: |
+          Optional human-readable explanation. Surfaced in the step card and
+          in alignment-shadow tooltips.

@@ -1,20 +1,51 @@
 {
+  "run_id": "0000example00000",
   "task": 1,
   "model": "qwen",
   "adapter": "passthrough",
+  "seed": null,
+  "tool_versions": {
+    "harness/tools.py": "example-stub",
+    "harness/signature.py": "example-stub"
+  },
+  "prompt_versions": {
+    "system": "example-stub",
+    "task_spec": "example-stub",
+    "adapter": "example-stub"
+  },
   "elapsed_s": 4.81,
   "completed": false,
   "tool_calls": 1,
-  "errors": 0,
+  "errors": 1,
   "loops": 0,
   "early_termination": true,
   "notes": "output/vendors.json missing",
   "agent_error": null,
-  "transcript_summary": [
+  "agent_error_detail": null,
+  "agent_error_traceback": null,
+  "transcript": [
     {
+      "step_idx": 0,
       "role": "assistant",
-      "content_preview": "I'll read the input file and extract the vendor list.\n<tool_call>\n{\"name\": \"fs_read\", \"arguments\": {\"path\":",
-      "tool_calls": []
+      "content": "I'll read the input file and extract the vendor list.\n<tool_call>\n{\"name\": \"fs_read\", \"arguments\": {\"path\": \"sample-data.md\"}}\n</tool_call>",
+      "tool_calls": [
+        {
+          "id": "call_0",
+          "name": "fs_read",
+          "arguments": {
+            "path": "sample-data.md"
+          },
+          "signature": "fs_read(path=\"sample-data.md\")"
+        }
+      ]
+    },
+    {
+      "step_idx": 1,
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "name": "fs_read",
+      "content": "# Vendor Registry — Q2 2026\n\nThis file is the input for Task 1. Parse the front-matter block below.\n\n---\nvendors:\n  - name: Anthropic\n    region: us-west\n    priority: 1\n  - name: Alibaba DashScope\n    region: cn-hangzhou\n    priority: 2\n  - name: Zhipu BigModel\n    region: cn-beijing\n    priority: 2\n  - name: Moonshot\n    region: cn-beijing\n    priority: 3\n  - name: Stepfun\n    region: cn-shanghai\n    priority: 4\n---\n"
     }
-  ]
+  ],
+  "alignment": null
 }

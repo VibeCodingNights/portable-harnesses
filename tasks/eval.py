@@ -18,11 +18,18 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EXPECTED_DIR = ROOT / "tasks" / "expected"
+
+# Local import — keep loop detection honest by using the full canonical signature
+# rather than a truncated heuristic. The eval runs in the same process as run.py
+# so harness/ is already importable.
+sys.path.insert(0, str(ROOT))
+from harness.signature import canonical  # noqa: E402
 
 
 def score(*, task_id: int, transcript: list[dict], sandbox: Path) -> dict:
@@ -124,19 +131,28 @@ def _count_errors(transcript: list[dict]) -> int:
 
 
 def _count_loops(transcript: list[dict]) -> int:
-    """Heuristic: count tool calls (name + first arg) that repeat back-to-back."""
+    """Count tool calls with identical canonical signatures.
+
+    Uses the full canonical form from harness/signature.py — no truncation.
+    Two calls with identical canonical signatures ARE the same call; 3+ such
+    calls in a transcript indicate a loop. The signature already collapses
+    cosmetic variation (path normalization, key order, whitespace) and
+    preserves semantic variation (different content → different sha hashes
+    for codegen_run, etc.), so this is a sharper definition than the prior
+    [:60] heuristic.
+    """
     sigs: list[str] = []
     for m in transcript:
         if m.get("role") == "assistant":
             for tc in (m.get("tool_calls") or []):
-                args = tc.get("arguments") or {}
-                first_val = next(iter(args.values()), "")
-                sigs.append(f"{tc.get('name')}::{str(first_val)[:60]}")
+                # Prefer pre-computed signature (post C1.4); fall back to recompute.
+                sig = tc.get("signature") or canonical(tc.get("name", ""), tc.get("arguments") or {})
+                sigs.append(sig)
     if not sigs:
         return 0
     repeats = 0
     counts = Counter(sigs)
-    for sig, c in counts.items():
+    for _, c in counts.items():
         if c >= 3:  # 3+ identical = a loop
             repeats += c - 1
     return repeats
