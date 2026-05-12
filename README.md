@@ -13,8 +13,8 @@ Tonight: one harness, three tasks, four models. Measure what breaks. Write the s
 ## Quick start
 
 ```bash
-git clone https://github.com/vibecodingnights/portable-harnessing
-cd portable-harnessing
+git clone https://github.com/VibeCodingNights/portable-harnesses
+cd portable-harnesses
 ./setup.sh                                  # writes .env from template, installs deps
 # → grab a key at https://openrouter.ai/keys, add ~$10 credit, paste into .env
 ./setup.sh                                  # second run: health-checks the four models

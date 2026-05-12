@@ -33,7 +33,7 @@ vibecodingnights.com
 # Vibe Coding Night: Portability Tax
 **Theme:** Portable harnessing across heterogeneous models
 **Date:** Tuesday | **Time:** 6:00–10:00 PM | **Location:** Frontier Tower, SF
-**Repo:** `github.com/vibecodingnights/portability-tax`
+**Repo:** `github.com/VibeCodingNights/portable-harnesses`
 
 ---
 
@@ -42,9 +42,9 @@ vibecodingnights.com
 People arrive, open laptops, connect to wifi. A single card on each table:
 
 > **wifi:** [network/password]
-> **repo:** `github.com/vibecodingnights/portability-tax`
+> **repo:** `github.com/VibeCodingNights/portable-harnesses`
 > **models:** get an OpenRouter key at `openrouter.ai/keys`, add ~$10 credit
-> **start:** `git clone → cd portability-tax → ./setup.sh`
+> **start:** `git clone → cd portable-harnesses → ./setup.sh`
 
 `setup.sh` installs dependencies, writes `.env` from the template, and (once they've pasted their OpenRouter key) health-checks all four models (Claude Opus 4.7, Qwen 3.6 Max, GLM-5.1, Kimi K2.6) through OpenRouter. Four green checkmarks means you're ready.
 
@@ -233,7 +233,7 @@ No pressure. No queue. Host asks "Anyone want to show what they built or what br
 ## Event Repo Structure
 
 ```
-vibecodingnights/portability-tax/
+VibeCodingNights/portable-harnesses/
 │
 ├── README.md                           # Theme, quick start, targets
 ├── .env.example                        # OPENROUTER_API_KEY template (+ optional BRAVE_API_KEY)
@@ -309,7 +309,7 @@ vibecodingnights/portability-tax/
 
 ---
 
-## Existing Repos in github.com/vibecodingnights
+## Existing Repos in github.com/VibeCodingNights
 - **superhero-skill** — VCN #31 event package — Claude Code / OpenClaw skill + slides + persona template for superhero.com agents on æternity
 - **vcn-32-slides** — VCN #32 — Trading agents on superhero.com (event deck)
 - **auto-vcn** — 
@@ -329,6 +329,6 @@ vibecodingnights/portability-tax/
 - Create the directory structure from the flow plan.
 - Write the README in the event voice (short, direct, provocative).
 - Challenge files should have clear instructions. Starter templates should be minimal and runnable.
-- When ready, create the repo on GitHub: `gh repo create vibecodingnights/{name} --public`
+- When ready, create the repo on GitHub: `gh repo create VibeCodingNights/{name} --public`
 - Stage everything and commit: `git add -A && git commit -m "scaffold: portable harnessing across heterogeneous models The Chinese labs are each shipping a model with an implicit harness — Bailing's tied to Ant's payment rails, Kimi's tied to its search and coding agent, Qwen's tied to Aliyun's enterprise stack, Stepfun's open platform is itself a harness assumption. Tuesday's frame is "which agentic stack wins." The interesting question OpenClaw can ask at right angles to that: what does a harness look like when no single lab owns it? Not "Claude vs Qwen vs Kimi" but Qwen-and-Kimi-and-Claude inside the same shell, on the same task, with the same memory and tool surface. The labs are all post-training their models into harnesses now — RL'd against specific tool patterns, specific context formats. So a model isn't a model anymore, it's a model+expected-harness pair. The new kernel is harness portability as a first-class concept: where does the model's pre-baked harness assumption end and yours begin, and how cleanly can you swap. That's not in Tuesday's lineup. It's the natural complement."`
 - Push: `git push -u origin main`
